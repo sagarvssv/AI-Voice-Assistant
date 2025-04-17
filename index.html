@@ -194,7 +194,7 @@
             display: none;
         }
         
-        .completed {
+        .completed .form-status {
             display: block;
         }
         
@@ -242,7 +242,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>Voice Assistant Form</h1>
+        <h1>Voice-Assisted Form</h1>
         <p>Complete your information using our advanced voice recognition system</p>
     </div>
     
@@ -253,29 +253,54 @@
                 <form id="myForm">
                     <div class="form-group">
                         <label for="name">Full Name</label>
-                        <input type="text" class="form-control" id="name" placeholder="Your name" readonly>
+                        <input type="text" class="form-control" id="name" placeholder="Your name">
                     </div>
                     
                     <div class="form-group">
                         <label for="email">Email Address</label>
-                        <input type="email" class="form-control" id="email" placeholder="Your email" readonly>
+                        <input type="email" class="form-control" id="email" placeholder="Your email">
                     </div>
                     
                     <div class="form-group">
                         <label for="phone">Phone Number</label>
-                        <input type="tel" class="form-control" id="phone" placeholder="Your phone number" readonly>
+                        <input type="tel" class="form-control" id="phone" placeholder="Your phone number">
                     </div>
                     
                     <div class="form-group">
-                        <label for="address">City</label>
-                        <input type="text" class="form-control" id="address" placeholder="Your city" readonly>
+                        <label for="city">City</label>
+                        <input type="text" class="form-control" id="city" placeholder="Your city">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="currency">Currency</label>
+                        <input type="text" class="form-control" id="currency" placeholder="Your currency (INR, USD, GBP, EUR..etc)">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="assetpurchase">Asset Name</label>
+                        <input type="text" class="form-control" id="assetpurchase" placeholder="Your asset name">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="annualincome">Annual Income </label>
+                        <input type="text" class="form-control" id="annualincome" placeholder="e.g., 10 lakhs or 1 crore">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="inflation">Inflation (%)</label>
+                        <input type="text" class="form-control" id="inflation" placeholder="e.g., 5%">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="goaltimeline">Goal Timeline (years)</label>
+                        <input type="text" class="form-control" id="goaltimeline" placeholder="e.g., 5 years">
                     </div>
                     
                     <div class="button-group">
                         <button type="button" id="startButton" class="btn btn-primary">
                             <svg class="btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <path d="M19 10v2a7 7 0 1 1-14 0v-2"></path>
                                 <line x1="12" y1="19" x2="12" y2="23"></line>
                                 <line x1="8" y1="23" x2="16" y2="23"></line>
                             </svg>
@@ -291,9 +316,7 @@
                         </button>
                     </div>
                     
-                    <div id="formStatus" class="form-status">
-                        Form submitted successfully. Thank you!
-                    </div>
+                    <div id="formStatus" class="form-status"></div>
                 </form>
             </div>
             
@@ -309,327 +332,664 @@
         </div>
     </div>
     
-    <!-- <footer>
-        <p>© 2025 Voice Assistant Premium Form | Powered by AWS Lex and Polly</p>
-    </footer> -->
     <script>
-        const API_ENDPOINT = 'https://n4kgojcoui.execute-api.eu-west-1.amazonaws.com';
-        let isListening = false;
-        let recognition;
-        let sessionId = 'session-' + Date.now();
-        let formCompleted = false;
-        let speechBuffer = '';
-        let debounceTimeout;
-        let confirmationState = 'none'; // 'none', 'awaitingEmailConfirmation', 'waitingForNewEmail'
-        let lastProcessedEmail = ''; // Track the last processed email
-        let confirmedEmail = ''; // Track the final confirmed email
-        let isProcessing = false; // Flag to prevent duplicate processing
-    
-        document.getElementById('startButton').addEventListener('click', toggleVoiceAssistant);
-        document.getElementById('submitButton').addEventListener('click', submitForm);
-    
-        function checkFormCompletion() {
-            const name = document.getElementById('name').value;
-            const email = document.getElementById('email').value;
-            const phone = document.getElementById('phone').value;
-            const address = document.getElementById('address').value;
-            
-            if (name && email && phone && address) {
-                document.getElementById('submitButton').style.display = 'inline-flex';
-                formCompleted = true;
+const API_ENDPOINT = 'https://n4kgojcoui.execute-api.eu-west-1.amazonaws.com';
+let isListening = false;
+let recognition;
+let sessionId = 'session-' + Date.now();
+let speechBuffer = '';
+let debounceTimeout;
+let confirmationState = 'none';
+let lastProcessedEmail = '';
+let confirmedEmail = '';
+let isProcessing = false;
+let formState = {};
+let serverErrorCount = 0;
+const MAX_SERVER_ERRORS = 3;
+let isRecognitionRunning = false;
+
+document.getElementById('startButton').addEventListener('click', toggleVoiceAssistant);
+document.getElementById('submitButton').addEventListener('click', submitForm);
+
+const numberWords = {
+    'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9,
+    'ten': 10, 'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15, 'sixteen': 16,
+    'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50,
+    'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90, 'hundred': 100, 'thousand': 1000,
+    'lakh': 100000, 'lac': 100000, 'laks': 100000, 'lakhs': 100000, 'crore': 10000000
+};
+
+function parseSpokenNumber(text) {
+    if (!text) return null;
+    text = text.toLowerCase().trim()
+        .replace(/,/g, '')
+        .replace(/percent/g, '')
+        .replace(/%/g, '')
+        .replace(/years?/g, '')
+        .replace(/and/g, '')
+        .replace(/lakh(s)?|lac(s)?/g, 'lakh');
+
+    if (/^\d+(\.\d+)?$/.test(text)) return parseFloat(text);
+
+    let result = 0;
+    let currentNumber = 0;
+    const parts = text.split(/\s+/);
+
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+
+        if (part.includes('.')) {
+            const decimalMatch = part.match(/^(\d+\.\d+)$/);
+            if (decimalMatch && i < parts.length - 1 && parts[i + 1] === 'lakh') {
+                currentNumber = parseFloat(decimalMatch[1]) * 100000;
+                i++;
+                continue;
             }
         }
-    
-        function submitForm() {
-            document.getElementById('formStatus').classList.add('completed');
-            document.getElementById('submitButton').disabled = true;
-            
-            console.log("Form submitted with the following data:");
-            console.log({
-                name: document.getElementById('name').value,
-                email: document.getElementById('email').value,
-                phone: document.getElementById('phone').value,
-                address: document.getElementById('address').value
-            });
-            
-            updateResponseArea("Form has been submitted successfully. Thank you!");
-            
-            const inputs = document.querySelectorAll('input');
-            inputs.forEach(input => input.style.backgroundColor = '#f0f2f5');
+
+        if (numberWords[part] !== undefined) {
+            const value = numberWords[part];
+            if (value >= 1000) {
+                if (currentNumber === 0) currentNumber = 1;
+                result += currentNumber * value;
+                currentNumber = 0;
+            } else if (value === 100) {
+                currentNumber *= 100;
+            } else {
+                currentNumber += value;
+            }
+        } else if (/^\d+$/.test(part)) {
+            currentNumber += parseInt(part);
         }
-    
-        async function toggleVoiceAssistant() {
-            if (isListening) stopListening();
-            else await startListening();
+
+        if (i < parts.length - 1 && ['thousand', 'lakh', 'crore'].includes(parts[i + 1])) {
+            continue;
+        } else if (currentNumber > 0) {
+            result += currentNumber;
+            currentNumber = 0;
         }
+    }
+
+    if (currentNumber > 0) result += currentNumber;
+    return result > 0 ? result : parseFloat(text) || null;
+}
+
+function formatAnnualIncome(value) {
+    const num = parseFloat(value);
+    if (isNaN(num) || num <= 0) return null;
+
+    if (num >= 100000 && num < 10000000) {
+        const lakhs = Math.floor(num / 100000);
+        const thousands = Math.floor((num % 100000) / 1000);
+        const remainder = num % 1000;
+        let result = `${lakhs}.00 lakh${lakhs > 1 ? 's' : ''}`;
+        if (thousands > 0) {
+            result = `${lakhs}.${thousands < 10 ? '0' : ''}${thousands} lakh${lakhs > 1 || thousands > 10 ? 's' : ''}`;
+        }
+        if (remainder > 0 && thousands === 0) {
+            result = `${lakhs} lakh${lakhs > 1 ? 's' : ''} ${remainder}`;
+        }
+        return result;
+    }
+    if (num >= 10000000) {
+        return `${(num / 10000000).toFixed(2)} crore${num >= 20000000 ? 's' : ''}`;
+    }
+    return `${num.toLocaleString('en-IN')} rupees`;
+}
+
+function formatInflation(value) {
+    const num = parseFloat(value);
+    if (isNaN(num) || num < 0) return null;
+    return `${num.toFixed(0)}%`;
+}
+
+function formatGoalTimeline(value) {
+    const num = parseFloat(value);
+    if (isNaN(num) || num <= 0) return null;
+    return `${Math.round(num)} years`;
+}
+
+function checkFormCompletion() {
+    const fields = ['name', 'email', 'phone', 'city', 'currency', 'assetpurchase', 'annualincome', 'inflation', 'goaltimeline'];
+    formState = {};
+    let allFilled = true;
+
+    fields.forEach(field => {
+        const input = document.getElementById(field);
+        const value = input ? input.value.trim() : '';
+        formState[field] = value;
+        if (!value) allFilled = false;
+    });
+
+    const submitButton = document.getElementById('submitButton');
+    if (allFilled) {
+        submitButton.style.display = 'block';
+        submitButton.disabled = false;
+    } else {
+        submitButton.style.display = 'none';
+    }
+
+    console.log("Form state:", formState, "All filled:", allFilled);
+    return allFilled;
+}
+
+function submitForm() {
+    const allFilled = checkFormCompletion();
+    if (!allFilled) {
+        const missingFields = Object.keys(formState).filter(key => !formState[key]);
+        const errorMessage = `Please fill in all fields: ${missingFields.join(', ')}.`;
+        updateResponseArea(errorMessage);
+        speak(errorMessage);
+        return;
+    }
+
+    const username = formState.name || "User";
+    document.getElementById('formStatus').classList.add('completed');
+    document.getElementById('formStatus').textContent = `Your form has been successfully submitted !`;
+    document.getElementById('submitButton').style.display = 'none';
+    document.getElementById('submitButton').disabled = true;
+    console.log("Form submitted:", formState);
     
-        async function startListening() {
-            isListening = true;
-            const startButton = document.getElementById('startButton');
-            startButton.innerHTML = `
-                <svg class="btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="6" y="4" width="4" height="16"></rect>
-                    <rect x="14" y="4" width="4" height="16"></rect>
-                </svg>
-                Stop Voice Assistant
-            `;
-            startButton.classList.add('listening');
-            
-            await sendToLex("Hello");
-            
+    updateResponseArea(`Your form has been successfully submitted !`);
+    speak(`Your form has been successfully submitted !!`);
+    
+    document.querySelectorAll('input').forEach(input => {
+        input.style.backgroundColor = '#f0f2f5';
+        input.disabled = true;
+    });
+    stopListening();
+}
+
+async function toggleVoiceAssistant() {
+    if (isListening) stopListening();
+    else await startListening();
+}
+
+async function startListening() {
+    isListening = true;
+    serverErrorCount = 0;
+    isRecognitionRunning = false;
+    const startButton = document.getElementById('startButton');
+    startButton.innerHTML = `
+        <svg class="btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="6" y="4" width="4" height="16"></rect>
+            <rect x="14" y="4" width="4" height="16"></rect>
+        </svg>
+        Stop Voice Assistant
+    `;
+    startButton.classList.add('listening');
+
+    await sendToLex("hello");
+    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = 'en_US';
+
+    recognition.onresult = async event => {
+        if (isProcessing) return;
+        isProcessing = true;
+        const text = event.results[event.results.length - 1][0].transcript;
+        speechBuffer = text;
+        console.log("Raw speech input:", speechBuffer);
+        console.log("Current confirmation state:", confirmationState);
+
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(async () => {
             try {
-                recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                recognition.continuous = true;
-                recognition.interimResults = false;
-                recognition.lang = 'en-US';
-                
-                recognition.onresult = async function(event) {
-                    if (isProcessing) return;
-                    isProcessing = true;
-                    
-                    const last = event.results.length - 1;
-                    const text = event.results[last][0].transcript;
-                    speechBuffer = text;
-                    console.log("Raw speech input:", speechBuffer);
-                    console.log("Current confirmation state:", confirmationState);
-                    
-                    clearTimeout(debounceTimeout);
-                    debounceTimeout = setTimeout(async () => {
-                        try {
-                            const userResponse = speechBuffer.trim();
-                            console.log("Processing input:", userResponse);
-    
-                            if (confirmationState === 'awaitingEmailConfirmation') {
-                                await handleEmailConfirmation(userResponse);
-                            } else if (confirmationState === 'waitingForNewEmail') {
-                                await processEmailInput(userResponse);
-                            } else {
-                                await sendToLex(speechBuffer);
-                            }
-                        } catch (error) {
-                            console.error("Error processing speech:", error);
-                        } finally {
-                            speechBuffer = '';
-                            isProcessing = false;
-                        }
-                    }, 1000);
-                };
-                
-                recognition.onend = function() {
-                    if (isListening) recognition.start();
-                };
-                
-                recognition.onerror = function(event) {
-                    console.error("Speech recognition error:", event.error);
-                    isProcessing = false;
-                    if (isListening) setTimeout(() => isListening && recognition.start(), 1000);
-                };
-                
-                recognition.start();
+                const userResponse = speechBuffer.trim();
+                console.log("Processing input:", userResponse);
+
+                if (confirmationState === 'awaitingEmailConfirmation') {
+                    await handleEmailConfirmation(userResponse);
+                } else if (confirmationState === 'waitingForNewEmail') {
+                    await processEmailInput(userResponse);
+                } else {
+                    if (handleDirectInputs(userResponse)) return;
+                    await sendToLex(userResponse);
+                }
             } catch (error) {
-                console.error("Error starting speech recognition:", error);
-                updateResponseArea("Could not start speech recognition. Please check your browser permissions.");
+                console.error("Error processing speech:", error);
+                updateResponseArea("Error processing your input. Please try again.");
+            } finally {
+                speechBuffer = '';
                 isProcessing = false;
             }
+        }, 1500);
+    };
+
+    recognition.onend = () => {
+        if (isListening && !isRecognitionRunning) {
+            console.log("Recognition ended, restarting...");
+            startRecognition();
         }
-    
-        async function handleEmailConfirmation(userResponse) {
-            const lowerResponse = userResponse.toLowerCase();
-            console.log("User confirmed with:", lowerResponse);
-            
-            if (lowerResponse.includes('yes')) {
-                console.log("Confirming email:", lastProcessedEmail);
-                confirmedEmail = lastProcessedEmail;
-                confirmationState = 'none';
-                document.getElementById('email').value = confirmedEmail; // Explicitly update the form field
-                console.log("Email field updated to:", confirmedEmail);
-                updateResponseArea("Email confirmed. Continuing with the form.");
-                await speak("Email confirmed. Continuing with the form.");
-                await sendToLex("Continue with form");
-            } else if (lowerResponse.includes('no')) {
-                confirmationState = 'waitingForNewEmail';
-                lastProcessedEmail = '';
-                confirmedEmail = '';
-                document.getElementById('email').value = '';
-                updateResponseArea("Please say your email again.");
-                await speak("Please say your email again.");
-            } else {
-                updateResponseArea("Please say 'yes' or 'no' to confirm your email.");
-                await speak("Please say 'yes' or 'no' to confirm your email.");
+    };
+
+    recognition.onerror = event => {
+        console.error("Speech recognition error:", event.error);
+        isProcessing = false;
+        if (event.error === 'no-speech') {
+            updateResponseArea("No speech detected. Please speak clearly and try again.");
+            speak("No speech detected. Please speak clearly and try again.");
+        }
+        if (isListening && !isRecognitionRunning) {
+            setTimeout(() => startRecognition(), 1000);
+        }
+    };
+
+    startRecognition();
+}
+
+function startRecognition() {
+    if (!isListening || isRecognitionRunning) return;
+    try {
+        isRecognitionRunning = true;
+        recognition.start();
+        console.log("Speech recognition started");
+    } catch (error) {
+        console.error("Failed to start recognition:", error);
+        isRecognitionRunning = false;
+        if (isListening) {
+            setTimeout(() => startRecognition(), 1000);
+        }
+    }
+}
+
+function handleDirectInputs(input) {
+    if (document.getElementById('responseArea').textContent.toLowerCase().includes('annual income')) {
+        let numValue = parseSpokenNumber(input);
+        if (numValue && !isNaN(numValue) && numValue > 0) {
+            const formattedIncome = formatAnnualIncome(numValue);
+            if (formattedIncome) {
+                document.getElementById('annualincome').value = formattedIncome;
+                console.log(`Direct handling: Updated annualincome to: ${formattedIncome} (${numValue})`);
+                checkFormCompletion();
+                document.getElementById('responseArea').textContent = '';
+                const sessionAttributes = getSessionAttributes();
+                sessionAttributes.annualincome = numValue.toString();
+                sendToLex("next", sessionAttributes);
+                return true;
             }
         }
-    
-        async function processEmailInput(input) {
-            console.log("Processing email input:", input);
-            
-            let normalizedInput = input.toLowerCase()
-                .replace(/\s+at\s+/g, '@')
-                .replace(/\s+dot\s+/g, '.')
-                .replace(/\s+/g, '');
-            
-            console.log("Normalized input:", normalizedInput);
-            
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (emailRegex.test(normalizedInput)) {
-                lastProcessedEmail = normalizedInput;
-                document.getElementById('email').value = normalizedInput;
-                confirmationState = 'awaitingEmailConfirmation';
-                updateResponseArea(`I heard your email as: ${normalizedInput}. Is that correct? Say 'yes' or 'no'.`);
-                await speak(`I heard your email as: ${normalizedInput}. Is that correct? Say 'yes' or 'no'.`);
-            } else {
-                const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/;
-                const match = input.match(emailPattern);
-                if (match) {
-                    const email = match[0];
-                    console.log("Extracted email as fallback:", email);
-                    lastProcessedEmail = email;
-                    document.getElementById('email').value = email;
-                    confirmationState = 'awaitingEmailConfirmation';
-                    updateResponseArea(`I heard your email as: ${email}. Is that correct? Say 'yes' or 'no'.`);
-                    await speak(`I heard your email as: ${email}. Is that correct? Say 'yes' or 'no'.`);
+        updateResponseArea("I couldn't understand your annual income. Please say it again, like 'three lakh' or '300000'.");
+        speak("I couldn't understand your annual income. Please say it again, like 'three lakh' or '300000'.");
+        return true;
+    }
+
+    if (document.getElementById('responseArea').textContent.toLowerCase().includes('goal timeline')) {
+        let numValue = parseSpokenNumber(input);
+        if (numValue && !isNaN(numValue) && numValue > 0) {
+            const formattedTimeline = formatGoalTimeline(numValue);
+            if (formattedTimeline) {
+                document.getElementById('goaltimeline').value = formattedTimeline;
+                console.log(`Direct handling: Updated goaltimeline to: ${formattedTimeline}`);
+                checkFormCompletion();
+                document.getElementById('responseArea').textContent = '';
+                updateResponseArea(`Updated goal timeline to ${formattedTimeline}.`);
+                if (checkFormCompletion()) {
+                    const username = formState.name || "User";
+                    updateResponseArea(`Thank you ${username}, for providing all details. Proceed to submit the form.`);
+                    speak(`Thank you ${username}, for providing all details. Proceed to submit the form.`);
+                    return true;
+                }
+                const sessionAttributes = getSessionAttributes();
+                sessionAttributes.goaltimeline = numValue.toString();
+                sendToLex("next", sessionAttributes);
+                return true;
+            }
+        }
+        updateResponseArea("I couldn't understand your goal timeline. Please say it again, like '5' or 'five years'.");
+        speak("I couldn't understand your goal timeline. Please say it again, like '5' or 'five years'.");
+        return true;
+    }
+
+    if (document.getElementById('responseArea').textContent.toLowerCase().includes('inflation')) {
+        let numValue = parseSpokenNumber(input);
+        if (numValue !== null && !isNaN(numValue) && numValue >= 0) {
+            const formattedInflation = formatInflation(numValue);
+            if (formattedInflation) {
+                document.getElementById('inflation').value = formattedInflation;
+                console.log(`Direct handling: Updated inflation to: ${formattedInflation}`);
+                checkFormCompletion();
+                document.getElementById('responseArea').textContent = '';
+                const sessionAttributes = getSessionAttributes();
+                sessionAttributes.inflation = numValue.toString();
+                sendToLex("next", sessionAttributes);
+                return true;
+            }
+        }
+        updateResponseArea("I couldn't understand your inflation rate. Please say it again, like '5' or 'five percent'.");
+        speak("I couldn't understand your inflation rate. Please say it again, like '5' or 'five percent'.");
+        return true;
+    }
+
+    return false;
+}
+
+function getSessionAttributes() {
+    const attributes = {};
+    const fields = ['name', 'email', 'phone', 'city', 'assetpurchase', 'currency', 'annualincome', 'inflation', 'goaltimeline'];
+    fields.forEach(field => {
+        const value = document.getElementById(field)?.value;
+        if (value) {
+            attributes[field] = field.includes('income') || field.includes('inflation') || field.includes('goaltimeline')
+                ? parseSpokenNumber(value)?.toString() || value
+                : value;
+        }
+    });
+    console.log("Session attributes:", attributes);
+    return attributes;
+}
+
+async function handleLexResponse(lexResponse) {
+    console.log("Parsed Lex response:", JSON.stringify(lexResponse, null, 2));
+
+    if (confirmedEmail && lexResponse.sessionState?.intent?.slots?.email?.value?.interpretedValue) {
+        console.log("Email already confirmed, skipping email slot");
+        lexResponse.sessionState.intent.slots.email = null;
+    }
+
+    if (lexResponse.sessionState?.intent?.slots) {
+        const slots = lexResponse.sessionState.intent.slots;
+        let shouldAdvance = false;
+
+        for (const [key, value] of Object.entries(slots)) {
+            if (!value?.value?.interpretedValue) continue;
+            const interpretedValue = value.value.interpretedValue;
+            console.log(`Processing slot: ${key} = ${interpretedValue}`);
+
+            if (key.toLowerCase() === 'email' && !confirmedEmail) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(interpretedValue)) {
+                    updateResponseArea("That doesn't seem like a valid email. Please say your email again.");
+                    await speak("That doesn't seem like a valid email. Please say your email again.");
+                    confirmationState = 'waitingForNewEmail';
+                    return;
                 } else {
-                    updateResponseArea("I couldn't recognize that as an email address. Please say your email again, or try spelling it out.");
-                    await speak("I couldn't recognize that as an email address. Please say your email again, or try spelling it out.");
+                    lastProcessedEmail = interpretedValue;
+                    document.getElementById('email').value = interpretedValue;
+                    confirmationState = 'awaitingEmailConfirmation';
+                    updateResponseArea(`I heard your email as: ${interpretedValue}. Is that correct? Say 'yes' or 'no'.`);
+                    await speak(`I heard your email as: ${interpretedValue}. Is that correct? Say 'yes' or 'no'.`);
+                    return;
                 }
             }
-        }
-    
-        function stopListening() {
-            isListening = false;
-            const startButton = document.getElementById('startButton');
-            startButton.innerHTML = `
-                <svg class="btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                    <line x1="12" y1="19" x2="12" y2="23"></line>
-                    <line x1="8" y1="23" x2="16" y2="23"></line>
-                </svg>
-                Start Voice Assistant
-            `;
-            startButton.classList.remove('listening');
-            if (recognition) recognition.stop();
-            clearTimeout(debounceTimeout);
-        }
-    
-        async function sendToLex(text) {
-            if (!text || text.trim().length === 0) {
-                console.log("Empty input, not sending to Lex");
-                return;
+
+            const inputElement = document.getElementById(key.toLowerCase());
+            if (inputElement && inputElement.value && key.toLowerCase() !== 'email') {
+                console.log(`Skipping ${key.toLowerCase()}: already set to ${inputElement.value}`);
+                continue;
             }
-    
-            try {
-                console.log("Sending to Lex:", text);
-                const response = await fetch(`${API_ENDPOINT}/lex`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ inputText: text, sessionId: sessionId })
-                });
-    
-                console.log("Response status:", response.status);
-                const responseText = await response.text();
-                console.log("Raw Lex response:", responseText);
-    
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}, body: ${responseText}`);
-    
-                const data = JSON.parse(responseText);
-                await handleLexResponse(data);
-            } catch (error) {
-                console.error("Error sending to Lex:", error);
-                updateResponseArea("Error: " + error.message);
-            }
-        }
-    
-        async function handleLexResponse(lexResponse) {
-            console.log("Parsed Lex response:", JSON.stringify(lexResponse, null, 2));
-            
-            // Skip email processing if we already have a confirmed email
-            if (confirmedEmail && lexResponse.sessionState?.intent?.slots?.email?.value?.interpretedValue) {
-                console.log("Email already confirmed as:", confirmedEmail, "Skipping Lex email slot reprocessing.");
-                lexResponse.sessionState.intent.slots.email = null; // Prevent Lex from overriding
-            }
-    
-            if (lexResponse.sessionState?.intent?.slots) {
-                const slots = lexResponse.sessionState.intent.slots;
-                for (const [key, value] of Object.entries(slots)) {
-                    if (value?.value?.interpretedValue) {
-                        const interpretedValue = value.value.interpretedValue;
-                        console.log(`Processing slot: ${key} = ${interpretedValue}`);
-                        
-                        if (key.toLowerCase() === 'email' && confirmationState === 'none' && !confirmedEmail) {
-                            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                            if (!emailRegex.test(interpretedValue)) {
-                                updateResponseArea("That doesn't seem like a valid email. Please say your email again.");
-                                await speak("That doesn't seem like a valid email. Please say your email again.");
-                                confirmationState = 'waitingForNewEmail';
-                            } else {
-                                lastProcessedEmail = interpretedValue;
-                                document.getElementById('email').value = interpretedValue;
-                                confirmationState = 'awaitingEmailConfirmation';
-                                updateResponseArea(`I heard your email as: ${interpretedValue}. Is that correct? Say 'yes' or 'no'.`);
-                                await speak(`I heard your email as: ${interpretedValue}. Is that correct? Say 'yes' or 'no'.`);
-                                return;
-                            }
-                        } else if (confirmationState === 'none') {
-                            document.getElementById(key.toLowerCase()).value = interpretedValue;
-                        }
+
+            if (key.toLowerCase() === 'annualincome') {
+                let numValue = parseSpokenNumber(interpretedValue);
+                if (numValue && !isNaN(numValue) && numValue > 0) {
+                    const formattedIncome = formatAnnualIncome(numValue);
+                    if (formattedIncome) {
+                        document.getElementById('annualincome').value = formattedIncome;
+                        console.log(`Lex handling: Updated annualincome to: ${formattedIncome} (${numValue})`);
+                        shouldAdvance = true;
                     }
                 }
-                checkFormCompletion();
+                continue;
             }
-    
-            if (lexResponse.messages?.length > 0) {
-                const message = lexResponse.messages[0].content;
-                updateResponseArea(message);
-                await speak(message);
-            }
-    
-            if (lexResponse.sessionState?.intent?.state === 'Fulfilled') {
-                updateResponseArea("All information collected. You can now submit the form.");
-                await speak("All information collected. You can now submit the form.");
-                stopListening();
-                document.getElementById('submitButton').style.display = 'inline-flex';
-            }
-        }
-    
-        async function speak(text) {
-            try {
-                console.log("Sending to Polly:", text);
-                const response = await fetch(`${API_ENDPOINT}/polly`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text })
-                });
-    
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    
-                const data = await response.json();
-                if (data.audio) await playAudio(data.audio);
-                else throw new Error('No audio data received from Polly');
-            } catch (error) {
-                console.error("Error with text-to-speech:", error);
-                updateResponseArea("Error with text-to-speech: " + error.message);
-            }
-        }
-    
-        async function playAudio(base64Audio) {
-            return new Promise((resolve, reject) => {
-                try {
-                    const audio = new Audio("data:audio/mp3;base64," + base64Audio);
-                    audio.onended = resolve;
-                    audio.onerror = reject;
-                    const playPromise = audio.play();
-                    if (playPromise) playPromise.catch(reject);
-                } catch (error) {
-                    reject(error);
+
+            if (key.toLowerCase() === 'inflation') {
+                let numValue = parseSpokenNumber(interpretedValue);
+                if (numValue !== null && !isNaN(numValue) && numValue >= 0) {
+                    const formattedInflation = formatInflation(numValue);
+                    if (formattedInflation) {
+                        document.getElementById('inflation').value = formattedInflation;
+                        console.log(`Lex handling: Updated inflation to: ${formattedInflation}`);
+                        shouldAdvance = true;
+                    }
                 }
-            });
+                continue;
+            }
+
+            if (key.toLowerCase() === 'goaltimeline') {
+                let numValue = parseSpokenNumber(interpretedValue);
+                if (numValue !== null && !isNaN(numValue) && numValue > 0) {
+                    const formattedTimeline = formatGoalTimeline(numValue);
+                    if (formattedTimeline) {
+                        document.getElementById('goaltimeline').value = formattedTimeline;
+                        console.log(`Lex handling: Updated goaltimeline to: ${formattedTimeline}`);
+                        shouldAdvance = true;
+                    }
+                } else {
+                    updateResponseArea("I couldn't understand your goal timeline. Please say it again, like '5' or 'five years'.");
+                    await speak("I couldn't understand your goal timeline. Please say it again, like '5' or 'five years'.");
+                    return;
+                }
+            }
+
+            if (inputElement) {
+                inputElement.value = interpretedValue;
+                console.log(`Updated ${key.toLowerCase()} to: ${interpretedValue}`);
+                shouldAdvance = true;
+            }
         }
-    
-        function updateResponseArea(text) {
-            const responseArea = document.getElementById('responseArea');
-            responseArea.textContent += text + '\n';
-            responseArea.scrollTop = responseArea.scrollHeight;
+
+        checkFormCompletion();
+        if (checkFormCompletion()) {
+            const username = formState.name || "User";
+            updateResponseArea(`Thank you, ${username}, for providing all details. Please click the submit button to complete the form.`);
+            await speak(`Thank you, ${username}, for providing all details. Please click the submit button to complete the form.`);
+            return;
         }
+
+        if (shouldAdvance) {
+            const sessionAttributes = getSessionAttributes();
+            await sendToLex("next", sessionAttributes);
+            return;
+        }
+    }
+
+    if (lexResponse.messages?.length > 0) {
+        const userName = formState.name || lexResponse.sessionState?.intent?.slots?.name?.value?.interpretedValue || '';
+        const messageContent = lexResponse.messages.find(msg => userName && msg.content.toLowerCase().includes(userName.toLowerCase()))?.content || lexResponse.messages[0].content;
+
+        updateResponseArea(messageContent);
+        await speak(messageContent);
+    }
+
+    if (lexResponse.sessionState?.intent?.state === 'Fulfilled') {
+        checkFormCompletion();
+        const username = formState.name || "User";
+        updateResponseArea(`Thank you, ${username}, for providing all details. Please click the submit button to complete the form.`);
+        await speak(`Thank you, ${username}, for providing all details. Please click the submit button to complete the form.`);
+    }
+}
+
+async function handleEmailConfirmation(userResponse) {
+    const lowerResponse = userResponse.toLowerCase();
+    console.log("User confirmed with:", lowerResponse);
+
+    if (lowerResponse.includes('yes')) {
+        confirmedEmail = lastProcessedEmail;
+        confirmationState = 'none';
+        document.getElementById('email').value = confirmedEmail;
+        console.log("Email confirmed:", confirmedEmail);
+        updateResponseArea("Email confirmed. Continuing with the form.");
+        await speak("Email confirmed. Continuing with the form.");
+        await sendToLex("continue");
+    } else if (lowerResponse.includes('no')) {
+        confirmationState = 'waitingForNewEmail';
+        lastProcessedEmail = '';
+        confirmedEmail = '';
+        document.getElementById('email').value = '';
+        updateResponseArea("Please say your email again.");
+        await speak("Please say your email again.");
+    } else {
+        updateResponseArea("Please say 'yes' or 'no' to confirm your email.");
+        await speak("Please say 'yes' or 'no' to confirm your email.");
+    }
+}
+
+async function processEmailInput(input) {
+    let normalizedInput = input.toLowerCase()
+        .replace(/\s+at\s+/g, '@')
+        .replace(/\s+dot\s+/g, '.')
+        .replace(/\s+/g, '');
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (emailRegex.test(normalizedInput)) {
+        lastProcessedEmail = normalizedInput;
+        document.getElementById('email').value = normalizedInput;
+        confirmationState = 'awaitingEmailConfirmation';
+        updateResponseArea(`I heard your email as: ${normalizedInput}. Is that correct? Say 'yes' or 'no'.`);
+        await speak(`I heard your email as: ${normalizedInput}. Is that correct? Say 'yes' or 'no'.`);
+    } else {
+        const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/;
+        const match = input.match(emailPattern);
+        if (match) {
+            lastProcessedEmail = match[0];
+            document.getElementById('email').value = match[0];
+            confirmationState = 'awaitingEmailConfirmation';
+            updateResponseArea(`I heard your email as: ${match[0]}. Is that correct? Say 'yes' or 'no'.`);
+            await speak(`I heard your email as: ${match[0]}. Is that correct? Say 'yes' or 'no'.`);
+        } else {
+            updateResponseArea("I couldn't recognize that as an email address. Please say your email again.");
+            await speak("I couldn't recognize that as an email address. Please say your email again.");
+        }
+    }
+}
+
+function stopListening() {
+    isListening = false;
+    serverErrorCount = 0;
+    isRecognitionRunning = false;
+    const startButton = document.getElementById('startButton');
+    startButton.innerHTML = `
+        <svg class="btn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 1 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+        </svg>
+        Start Voice Assistant
+    `;
+    startButton.classList.remove('listening');
+    if (recognition) {
+        recognition.stop();
+        recognition = null;
+    }
+    clearTimeout(debounceTimeout);
+}
+
+async function sendToLex(text, sessionAttributes = {}) {
+    if (!text || text.trim().length === 0) {
+        console.log("Empty input, not sending to Lex");
+        return;
+    }
+
+    const payload = { inputText: text, sessionId: sessionId, sessionAttributes };
+    console.log("Exact Lex payload:", JSON.stringify(payload, null, 2));
+
+    try {
+        console.log("Sending to Lex:", text, "Attributes:", sessionAttributes);
+        const response = await fetch(`${API_ENDPOINT}/lex`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        console.log("Response status:", response.status);
+        const responseText = await response.text();
+        console.log("Raw Lex response:", responseText);
+
+        if (!response.ok) {
+            serverErrorCount++;
+            const errorData = tryParseJson(responseText) || { error: 'Unknown server error' };
+            console.log("Error data:", errorData);
+            restoreFormState();
+
+            let errorMessage = "Sorry, I couldn't process that. Please try again.";
+            if (errorData.error.includes("NoneType")) {
+                errorMessage = "The server is having trouble understanding my request. Please try again or enter the form manually.";
+            }
+
+            if (serverErrorCount >= MAX_SERVER_ERRORS) {
+                errorMessage = "I'm having trouble connecting to the server. Please enter the form manually or try again later.";
+                updateResponseArea(errorMessage);
+                await speak(errorMessage);
+                stopListening();
+                return;
+            }
+
+            throw new Error(`HTTP error! status: ${response.status}, body: ${responseText}`);
+        }
+
+        serverErrorCount = 0;
+        const data = JSON.parse(responseText);
+        await handleLexResponse(data);
+    } catch (error) {
+        console.error("Error sending to Lex:", error);
+        let errorMessage = "Sorry, I couldn't process that. Please try again.";
+        if (error.message.includes("NoneType")) {
+            errorMessage = "The server is having trouble understanding my request. Please try again or enter the form manually.";
+        }
+
+        if (serverErrorCount >= MAX_SERVER_ERRORS) {
+            errorMessage = "I'm having trouble connecting to the server. Please enter the form manually or try again later.";
+            stopListening();
+        }
+
+        updateResponseArea(errorMessage);
+        await speak(errorMessage);
+    }
+}
+
+function tryParseJson(text) {
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        return null;
+    }
+}
+
+function restoreFormState() {
+    for (const [key, value] of Object.entries(formState)) {
+        if (value && document.getElementById(key)) {
+            document.getElementById(key).value = value;
+        }
+    }
+}
+
+async function speak(text) {
+    try {
+        console.log("Sending to Polly:", text);
+        const response = await fetch(`${API_ENDPOINT}/polly`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+
+        if (!response.ok) throw new Error(`Polly error: ${response.status}`);
+        const data = await response.json();
+        if (data.audio) await playAudio(data.audio);
+    } catch (error) {
+        console.error("Text-to-speech error:", error);
+    }
+}
+
+async function playAudio(base64Audio) {
+    return new Promise((resolve, reject) => {
+        try {
+            const audio = new Audio("data:audio/mp3;base64," + base64Audio);
+            audio.onended = resolve;
+            audio.onerror = reject;
+            audio.play().catch(reject);
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+function updateResponseArea(text) {
+    const responseArea = document.getElementById('responseArea');
+    responseArea.textContent = text + '\n';
+    responseArea.scrollTop = responseArea.scrollHeight;
+}
     </script>
 </body>
 </html>
